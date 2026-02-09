@@ -1,0 +1,16 @@
+{
+  "name": "action-image-resize",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "RainPPR",
+  "license": "MIT",
+  "dependencies": {
+    "glob": "^13.0.1",
+    "sharp": "^0.34.5"
+  }
+}
