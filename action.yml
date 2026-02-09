@@ -1,4 +1,4 @@
-name: 'Deep Image Compression to AVIF'
+name: 'Action Image Resize'
 description: 'Compress PNG, JPG, JPEG, and WebP images to AVIF (quality 60) and resize to max 2560px width. Updates Markdown references automatically.'
 author: 'RainPPR'
 inputs:

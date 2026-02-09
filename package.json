@@ -1,12 +1,18 @@
 {
   "name": "action-image-resize",
   "version": "1.0.0",
-  "description": "",
+  "description": "Compress PNG, JPG, JPEG, and WebP images to AVIF (quality 60) and resize to max 2560px width. Updates Markdown references automatically.",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": [],
+  "keywords": [
+    "image",
+    "images",
+    "resize",
+    "compress",
+    "action"
+  ],
   "author": "RainPPR",
   "license": "MIT",
   "dependencies": {
