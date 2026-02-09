@@ -1,14 +1,21 @@
 FROM node:alpine
 
-# Install essential dependencies for sharp on Alpine
+# Install build dependencies for sharp and node-gyp
 RUN apk add --no-cache \
+    vips \
     vips-dev \
-    build-base
+    xpdf \
+    build-base \
+    python3 \
+    glib-dev \
+    libavif
 
 WORKDIR /app
 
 COPY package.json .
-RUN npm install
+
+# Install dependencies, ensuring sharp is built for musl
+RUN npm install --include=optional --platform=linuxmusl
 
 COPY index.js ./
 
