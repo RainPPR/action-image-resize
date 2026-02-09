@@ -3,7 +3,7 @@ const path = require('path');
 const { glob } = require('glob');
 const sharp = require('sharp');
 
-async function process() {
+async function run() {
   const workspace = process.env.GITHUB_WORKSPACE || process.cwd();
   const targetSubDir = process.env.INPUT_PATH || '.';
   const searchRoot = path.resolve(workspace, targetSubDir);
@@ -81,7 +81,7 @@ async function process() {
   console.log('Finished processing all files.');
 }
 
-process().catch(err => {
+run().catch(err => {
   console.error('Critical Error:', err);
   process.exit(1);
 });

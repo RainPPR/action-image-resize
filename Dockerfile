@@ -10,7 +10,7 @@ WORKDIR /app
 COPY package.json .
 
 # Standard install for Debian-based slim image
-RUN npm install
+RUN npm install -g npm && npm install
 
 COPY index.js ./
 
