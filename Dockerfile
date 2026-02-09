@@ -1,21 +1,16 @@
-FROM node:alpine
+FROM node:slim
 
-# Install build dependencies for sharp and node-gyp
-RUN apk add --no-cache \
-    vips \
-    vips-dev \
-    xpdf \
-    build-base \
-    python3 \
-    glib-dev \
-    libavif
+# Install system dependencies for sharp
+RUN apt-get update && apt-get install -y \
+    libvips-dev \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
 COPY package.json .
 
-# Install dependencies, ensuring sharp is built for musl
-RUN npm install --include=optional --platform=linuxmusl
+# Standard install for Debian-based slim image
+RUN npm install
 
 COPY index.js ./
 
