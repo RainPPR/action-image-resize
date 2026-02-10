@@ -67,6 +67,7 @@ async function run() {
       }
 
       await pipeline
+        .flatten({ background: '#FFFFFF' })
         .avif({ quality: 65, effort: 7 })
         .toFile(newFile);
 
