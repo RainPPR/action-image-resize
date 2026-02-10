@@ -203,25 +203,32 @@ async function run() {
   const savedPercent = stats.originalSize > 0 ? ((savedSize / stats.originalSize) * 100).toFixed(2) : 0;
 
   const summaryText = `### 🚀 Image Compression Summary
+
 - **Total Processed:** ${stats.processed} files
+
   - 🖼️ Bitmaps (to AVIF): ${stats.types.bitmap}
+
   - ⚡ SVGs (Optimized): ${stats.types.svg}
+
 - **Storage Saved:** ${(savedSize / 1024 / 1024).toFixed(2)} MB (${savedPercent}%)
+
 - **Original Total Size:** ${(stats.originalSize / 1024 / 1024).toFixed(2)} MB
-- **New Total Size:** ${(stats.newSize / 1024 / 1024).toFixed(2)} MB`;
+
+- **New Total Size:** ${(stats.newSize / 1024 / 1024).toFixed(2)} MB
+`;
 
   console.log(summaryText);
 
   // Set Output and Env for GitHub Actions
+  const delimiter = `EOF_${Math.random().toString(36).substring(7)}`;
+  
   if (process.env.GITHUB_OUTPUT) {
-    // Append to GITHUB_OUTPUT using multiline support if needed, but summary is short enough
-    fsSync.appendFileSync(process.env.GITHUB_OUTPUT, `summary=${summaryText.replace(/\n/g, '%0A')}\n`);
+    const outputContent = `summary<<${delimiter}\n${summaryText}\n${delimiter}\n`;
+    fsSync.appendFileSync(process.env.GITHUB_OUTPUT, outputContent);
   }
 
   if (process.env.GITHUB_ENV) {
-    // For environment variable, we might want a slightly different format or multiline
-    // We use the multiline syntax for GITHUB_ENV
-    const envContent = `IMAGE_COMPRESSION_SUMMARY<<EOF\n${summaryText}\nEOF\n`;
+    const envContent = `IMAGE_COMPRESSION_SUMMARY<<${delimiter}\n${summaryText}\n${delimiter}\n`;
     fsSync.appendFileSync(process.env.GITHUB_ENV, envContent);
   }
 
