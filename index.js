@@ -50,7 +50,7 @@ async function run() {
       }
 
       await pipeline
-        .avif({ quality: 60, effort: 7 })
+        .avif({ quality: 65, effort: 7 })
         .toFile(newFile);
 
       const newStat = await fs.stat(newFile);
@@ -88,17 +88,17 @@ async function run() {
         const image = sharp(file);
         const metadata = await image.metadata();
 
-        // Calculate target width: 2.5x original width (from metadata or viewBox)
-        let targetWidth = (metadata.width || 1000) * 2.5;
-        if (targetWidth > 2560) {
-          targetWidth = 2560;
+        // Calculate target width: 2x original width (from metadata or viewBox)
+        let targetWidth = (metadata.width || 1000) * 2;
+        if (targetWidth > 1080) {
+          targetWidth = 1080;
         }
 
         console.log(`  Scaling SVG to ${Math.round(targetWidth)}px width`);
 
         await image
           .resize({ width: Math.round(targetWidth) })
-          .avif({ quality: 60, effort: 7 })
+          .avif({ quality: 65, effort: 7 })
           .toFile(newFile);
 
         const newStat = await fs.stat(newFile);
