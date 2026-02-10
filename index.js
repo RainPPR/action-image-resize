@@ -7,12 +7,12 @@ const { optimize } = require('svgo');
 
 const logger = {
   info: (msg) => console.log(`[INFO] ${msg}`),
-  step: (msg) => console.log(`\n🚀 ${msg}`),
-  item: (msg) => console.log(`  - ${msg}`),
-  sub: (msg) => console.log(`    └─ ${msg}`),
-  success: (msg) => console.log(`  ✅ ${msg}`),
-  warn: (msg) => console.log(`  ⚠️  ${msg}`),
-  error: (msg, err) => console.error(`  ❌ ${msg}${err ? `: ${err.message}` : ''}`),
+  step: (msg) => console.log(`\n==> ${msg}`),
+  item: (msg) => process.stdout.write(`  - ${msg} ... `),
+  done: (msg) => process.stdout.write(`DONE${msg ? ` (${msg})` : ''}\n`),
+  sub: (msg) => console.log(`    |-- ${msg}`),
+  warn: (msg) => console.log(`  [WARN] ${msg}`),
+  error: (msg, err) => console.error(`  [ERROR] ${msg}${err ? `: ${err.message}` : ''}`),
 };
 
 const formatSize = (bytes) => (bytes / 1024).toFixed(2) + ' KB';
@@ -60,7 +60,9 @@ async function run() {
 
       let pipeline = image;
       if (metadata.width > 2560) {
+        process.stdout.write('\n');
         logger.sub(`Resizing from ${metadata.width}px -> 2560px`);
+        process.stdout.write('  - ... ');
         pipeline = pipeline.resize(2560);
       }
 
@@ -75,8 +77,9 @@ async function run() {
 
       await fs.unlink(file);
       convertedMap.set(file, newFile);
-      logger.success(`Converted to AVIF (${formatSize(newStat.size)})`);
+      logger.done(`AVIF: ${formatSize(newStat.size)}`);
     } catch (err) {
+      process.stdout.write('\n');
       logger.error(`Error processing ${relativePath}`, err);
     }
   }
@@ -107,20 +110,25 @@ async function run() {
       if (originalSize >= 100 * 1024) {
         forceAvif = true;
         shouldConvertToAvif = true;
+        process.stdout.write('\n');
         logger.sub(`Size >= 100KB, forcing AVIF.`);
+        process.stdout.write('  - ... ');
       } else if (originalSize >= 40 * 1024) {
         const content = await fs.readFile(file, 'utf8');
         const hasInlineAssets = /data:image\/|@font-face|<font/i.test(content);
         if (hasInlineAssets) {
           forceAvif = true;
           shouldConvertToAvif = true;
+          process.stdout.write('\n');
           logger.sub(`Contains inline assets, forcing AVIF.`);
+          process.stdout.write('  - ... ');
         }
       }
 
       const newFile = file.replace(/\.svg$/i, '.avif');
 
       if (!forceAvif && originalSize >= 10 * 1024) {
+        process.stdout.write('\n');
         logger.sub(`Attempting trial SVG->AVIF conversion...`);
         const image = sharp(file);
         const metadata = await image.metadata();
@@ -131,7 +139,7 @@ async function run() {
           .resize({ width: Math.round(targetWidth) })
           .avif({ quality: 65, effort: 7 })
           .toFile(newFile);
-
+        
         const avifStat = await fs.stat(newFile);
         const avifSize = avifStat.size;
         let ratioMet = false;
@@ -150,6 +158,7 @@ async function run() {
           await fs.unlink(newFile);
           logger.sub(`Ratio not met (${(avifSize / originalSize).toFixed(2)}x), fallback to SVGO.`);
         }
+        process.stdout.write('  - ... ');
       }
 
       if (shouldConvertToAvif) {
@@ -172,7 +181,7 @@ async function run() {
 
         await fs.unlink(file);
         convertedMap.set(file, newFile);
-        logger.success(`Converted to AVIF (${formatSize(newStat.size)})`);
+        logger.done(`AVIF: ${formatSize(newStat.size)}`);
       } else {
         const svgData = await fs.readFile(file, 'utf8');
         const result = optimize(svgData, {
@@ -198,10 +207,11 @@ async function run() {
           stats.newSize += newStat.size;
           stats.processed++;
           stats.types.svg++;
-          logger.success(`Optimized with SVGO (${formatSize(newStat.size)})`);
+          logger.done(`SVGO: ${formatSize(newStat.size)}`);
         }
       }
     } catch (err) {
+      process.stdout.write('\n');
       logger.error(`Error processing SVG ${relativePath}`, err);
     }
   }
@@ -239,8 +249,9 @@ async function run() {
       });
 
       if (content !== updatedContent) {
+        logger.item(`Updating links in ${relativeMdPath}`);
         await fs.writeFile(mdFile, updatedContent, 'utf8');
-        logger.success(`Updated links in ${relativeMdPath}`);
+        logger.done();
       }
     } catch (err) {
       logger.error(`Error updating links in ${relativeMdPath}`, err);
@@ -251,13 +262,13 @@ async function run() {
   const savedSize = stats.originalSize - stats.newSize;
   const savedPercent = stats.originalSize > 0 ? ((savedSize / stats.originalSize) * 100).toFixed(2) : 0;
 
-  const summaryText = `### 🚀 Image Compression Summary
+  const summaryMarkdown = `### Image Compression Summary
 
 - **Total Processed:** ${stats.processed} files
 
-  - 🖼️ Bitmaps (to AVIF): ${stats.types.bitmap}
+  - Bitmaps (to AVIF): ${stats.types.bitmap}
 
-  - ⚡ SVGs (SVGO Optimized): ${stats.types.svg}
+  - SVGs (SVGO Optimized): ${stats.types.svg}
 
 - **Storage Saved:** ${formatMB(savedSize)} (${savedPercent}%)
 
@@ -266,25 +277,25 @@ async function run() {
 - **New Total Size:** ${formatMB(stats.newSize)}
 `;
 
-  console.log('\n' + summaryText);
+  console.log('\n' + summaryMarkdown);
 
   // Set Output and Env for GitHub Actions
   const delimiter = `EOF_${Math.random().toString(36).substring(7)}`;
 
   if (process.env.GITHUB_OUTPUT) {
-    const outputContent = `summary<<${delimiter}\n${summaryText}\n${delimiter}\n`;
+    const outputContent = `summary<<${delimiter}\n${summaryMarkdown}\n${delimiter}\n`;
     fsSync.appendFileSync(process.env.GITHUB_OUTPUT, outputContent);
   }
 
   if (process.env.GITHUB_ENV) {
-    const envContent = `IMAGE_COMPRESSION_SUMMARY<<${delimiter}\n${summaryText}\n${delimiter}\n`;
+    const envContent = `IMAGE_COMPRESSION_SUMMARY<<${delimiter}\n${summaryMarkdown}\n${delimiter}\n`;
     fsSync.appendFileSync(process.env.GITHUB_ENV, envContent);
   }
 
-  logger.step('All tasks completed successfully! 🎉');
+  logger.step('All tasks completed successfully!');
 }
 
 run().catch(err => {
-  console.error('\n❌ Critical Error:', err);
+  console.error('\n[FATAL] Critical Error:', err);
   process.exit(1);
 });
