@@ -144,4 +144,4 @@ jobs:
 ---
 
 > [!NOTE]
-> 本文件由 **人工智能 (Antigravity/Gemini 3 Flash)** 生成，并由 **RainPPR** 进行了人工验收与微调。
+> 本文件由 **Antigravity (Gemini 3 Flash)** 生成，并由 **RainPPR** 进行了人工验收与微调。
