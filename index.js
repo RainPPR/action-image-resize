@@ -19,7 +19,9 @@ async function run() {
     types: { bitmap: 0, svg: 0 }
   };
 
-  // 1. Process Bitmaps (PNG, JPG, JPEG, WEBP) -> AVIF
+  const convertedMap = new Map(); // Absolute original path -> Absolute new path
+
+  // 1. Process Bitmaps (PNG, JPG, JPEG, WEBP, GIF) -> AVIF
   const imageFiles = await glob('**/*.{png,jpg,jpeg,webp,gif}', {
     cwd: searchRoot,
     ignore: ['node_modules/**', '.git/**'],
@@ -31,7 +33,7 @@ async function run() {
 
   for (const file of imageFiles) {
     const ext = path.extname(file).toLowerCase();
-    const newFile = file.replace(new RegExp(`\\${ext}$`, 'i'), '.avif');
+    const newFile = file.replace(new RegExp(`${ext}$`, 'i'), '.avif');
 
     try {
       const originalStat = await fs.stat(file);
@@ -48,7 +50,7 @@ async function run() {
       }
 
       await pipeline
-        .avif({ quality: 60 })
+        .avif({ quality: 60, effort: 9 })
         .toFile(newFile);
 
       const newStat = await fs.stat(newFile);
@@ -57,13 +59,14 @@ async function run() {
       stats.types.bitmap++;
 
       await fs.unlink(file);
+      convertedMap.set(file, newFile);
       console.log(`  Converted to AVIF: ${newFile} (${(newStat.size / 1024).toFixed(2)} KB)`);
     } catch (err) {
       console.error(`  Error processing bitmap ${file}: ${err.message}`);
     }
   }
 
-  // 2. Process SVGs -> SVGO
+  // 2. Process SVGs -> SVGO or AVIF
   const svgFiles = await glob('**/*.svg', {
     cwd: searchRoot,
     ignore: ['node_modules/**', '.git/**'],
@@ -75,97 +78,67 @@ async function run() {
 
   for (const file of svgFiles) {
     try {
-      const svgData = await fs.readFile(file, 'utf8');
       const originalStat = await fs.stat(file);
       stats.originalSize += originalStat.size;
 
-      console.log(`Processing SVG: ${file}`);
-      const result = optimize(svgData, {
-        path: file,
-        multipass: true,
-        js2svg: {
-          indent: 0,
-          pretty: false
-        },
-        plugins: [
-          "cleanupAttrs",
-          "cleanupIds",
-          {
-            name: "cleanupNumericValues",
-            params: {
-              floatPrecision: 2,
-              leadingZero: false,
-              defaultPx: true,
-              convertToPx: true
-            }
-          },
-          {
-            name: "cleanupListOfValues",
-            params: {
-              floatPrecision: 2,
-              leadingZero: false,
-              defaultPx: true,
-              convertToPx: true
-            }
-          },
-          {
-            name: "cleanupNumericValues",
-            params: {
-              floatPrecision: 2,
-              leadingZero: false,
-              defaultPx: true,
-              convertToPx: true
-            }
-          },
-          "collapseGroups",
-          {
-            name: "convertColors",
-            params: {
-              currentColor: false,
-              names2hex: true,
-              rgb2hex: true,
-              convertCase: "lower",
-              shorthex: true,
-              shortname: true
-            }
-          },
-          "convertEllipseToCircle",
-          "convertOneStopGradients",
-          "convertPathData",
-          "convertShapeToPath",
-          "convertStyleToAttrs",
-          "convertTransform",
-          "mergePaths",
-          "mergeStyles",
-          "minifyStyles",
-          "removeComments",
-          "removeDeprecatedAttrs",
-          "removeDesc",
-          "removeDoctype",
-          "removeEditorsNSData",
-          "removeEmptyAttrs",
-          "removeEmptyContainers",
-          "removeEmptyText",
-          "removeHiddenElems",
-          "removeMetadata",
-          "removeOffCanvasPaths",
-          "removeTitle",
-          "removeUnknownsAndDefaults",
-          "removeUnusedNS",
-          "removeUselessDefs",
-          "removeUselessStrokeAndFill",
-          "removeXlink",
-          "reusePaths"
-        ]
-      });
+      if (originalStat.size > 20 * 1024) {
+        // Convert large SVG to AVIF
+        console.log(`Converting large SVG to AVIF: ${file} (${(originalStat.size / 1024).toFixed(2)} KB)`);
+        const newFile = file.replace(/\.svg$/i, '.avif');
+        const image = sharp(file);
+        const metadata = await image.metadata();
 
-      if (result.data) {
-        await fs.writeFile(file, result.data);
-        const newStat = await fs.stat(file);
+        // Calculate target width: 2.5x original width (from metadata or viewBox)
+        let targetWidth = (metadata.width || 1000) * 2.5;
+        if (targetWidth > 2560) {
+          targetWidth = 2560;
+        }
+
+        console.log(`  Scaling SVG to ${Math.round(targetWidth)}px width`);
+
+        await image
+          .resize({ width: Math.round(targetWidth) })
+          .avif({ quality: 60, effort: 9 })
+          .toFile(newFile);
+
+        const newStat = await fs.stat(newFile);
         stats.newSize += newStat.size;
         stats.processed++;
-        stats.types.svg++;
-        console.log(`  Optimized SVG: ${file} (${(newStat.size / 1024).toFixed(2)} KB)`);
+        stats.types.bitmap++; // Large SVGs are tracked as bitmap now
+
+        await fs.unlink(file);
+        convertedMap.set(file, newFile);
+        console.log(`  Converted SVG to AVIF: ${newFile} (${(newStat.size / 1024).toFixed(2)} KB)`);
+      } else {
+        // Optimize small SVG with SVGO
+        console.log(`Optimizing small SVG: ${file}`);
+        const svgData = await fs.readFile(file, 'utf8');
+        const result = optimize(svgData, {
+          path: file,
+          multipass: true,
+          js2svg: { indent: 0, pretty: false },
+          plugins: [
+            "cleanupAttrs", "cleanupIds",
+            { name: "cleanupNumericValues", params: { floatPrecision: 2, leadingZero: false, defaultPx: true, convertToPx: true } },
+            { name: "cleanupListOfValues", params: { floatPrecision: 2, leadingZero: false, defaultPx: true, convertToPx: true } },
+            "collapseGroups",
+            { name: "convertColors", params: { currentColor: false, names2hex: true, rgb2hex: true, convertCase: "lower", shorthex: true, shortname: true } },
+            "convertEllipseToCircle", "convertOneStopGradients", "convertPathData", "convertShapeToPath", "convertStyleToAttrs", "convertTransform",
+            "mergePaths", "mergeStyles", "minifyStyles", "removeComments", "removeDeprecatedAttrs", "removeDesc", "removeDimensions", "removeDoctype",
+            "removeEditorsNSData", "removeEmptyAttrs", "removeEmptyContainers", "removeEmptyText", "removeHiddenElems", "removeMetadata",
+            "removeOffCanvasPaths", "removeTitle", "removeUnknownsAndDefaults", "removeUnusedNS", "removeUselessDefs", "removeUselessStrokeAndFill",
+            "removeXlink", "reusePaths"
+          ]
+        });
+
+        if (result.data) {
+          await fs.writeFile(file, result.data);
+          const newStat = await fs.stat(file);
+          stats.newSize += newStat.size;
+          stats.processed++;
+          stats.types.svg++;
+          console.log(`  Optimized SVG: ${file} (${(newStat.size / 1024).toFixed(2)} KB)`);
+        }
       }
     } catch (err) {
       console.error(`  Error processing SVG ${file}: ${err.message}`);
@@ -180,25 +153,28 @@ async function run() {
     absolute: true
   });
 
-  console.log(`Updating links in ${mdFiles.length} Markdown files.`);
+  console.log(`Checking link updates in ${mdFiles.length} Markdown files.`);
 
-  // Regex to find Markdown images and HTML img tags, capturing the path
-  // [!alt](path.ext) or <img src="path.ext" ...>
-  const markdownImgRegex = /(!\[.*?\]\((?!https?:\/\/)(.*?\.(?:png|jpg|jpeg|webp|gif))\))|(<img\b[^>]*?\bsrc=["'](?!https?:\/\/)(.*?\.(?:png|jpg|jpeg|webp|gif))["'][^>]*?>)/gi;
+  // Regex to match local image paths in ![]() or <img src="">
+  const markdownImgRegex = /(!\[.*?\]\((?!https?:\/\/)(.*?\.(?:png|jpg|jpeg|webp|gif|svg))\))|(<img\b[^>]*?\bsrc=["'](?!https?:\/\/)(.*?\.(?:png|jpg|jpeg|webp|gif|svg))["'][^>]*?>)/gi;
 
   for (const mdFile of mdFiles) {
     try {
       const content = await fs.readFile(mdFile, 'utf8');
+      const mdDir = path.dirname(mdFile);
+
       const updatedContent = content.replace(markdownImgRegex, (match, mdFull, mdPath, htmlFull, htmlPath) => {
-        if (mdPath) {
-          // It's a Markdown image link
-          const newPath = mdPath.replace(/\.(png|jpg|jpeg|webp|gif)$/i, '.avif');
-          return mdFull.replace(mdPath, newPath);
-        } else if (htmlPath) {
-          // It's an HTML img tag
-          const newPath = htmlPath.replace(/\.(png|jpg|jpeg|webp|gif)$/i, '.avif');
-          return htmlFull.replace(htmlPath, newPath);
+        const rawPath = mdPath || htmlPath;
+        if (!rawPath) return match;
+
+        // Resolve path to absolute to check if it was converted
+        const fullOriginalPath = path.resolve(mdDir, rawPath);
+
+        if (convertedMap.has(fullOriginalPath)) {
+          const newPath = rawPath.replace(/\.(png|jpg|jpeg|webp|gif|svg)$/i, '.avif');
+          return (mdPath ? mdFull : htmlFull).replace(rawPath, newPath);
         }
+
         return match;
       });
 
