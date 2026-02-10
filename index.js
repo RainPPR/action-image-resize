@@ -84,34 +84,79 @@ async function run() {
         path: file,
         multipass: true,
         js2svg: {
-          indent: '',
+          indent: 0,
           pretty: false
         },
         plugins: [
+          "cleanupAttrs",
+          "cleanupIds",
           {
-            name: 'preset-default',
+            name: "cleanupNumericValues",
             params: {
-              overrides: {
-                cleanupNumericValues: { floatPrecision: 1, leadingZero: false },
-                convertPathData: { floatPrecision: 1, applyTransforms: true }
-              },
-              removeViewBox: false,
-              removeMetadata: true,
-              removeTitle: true,
-              removeDesc: true,
-              removeUselessDefs: true,
-              removeComments: true,
-            },
+              floatPrecision: 2,
+              leadingZero: false,
+              defaultPx: true,
+              convertToPx: true
+            }
           },
-          'mergePaths',
-          'removeXMLNS',
-          'cleanupIds',
-          'removeEmptyAttrs',
-          'removeDimensions',
-          'sortAttrs',
-          'removeScriptElement',
-          'removeStyleElement',
-          'removeOffCanvasPaths'
+          {
+            name: "cleanupListOfValues",
+            params: {
+              floatPrecision: 2,
+              leadingZero: false,
+              defaultPx: true,
+              convertToPx: true
+            }
+          },
+          {
+            name: "cleanupNumericValues",
+            params: {
+              floatPrecision: 2,
+              leadingZero: false,
+              defaultPx: true,
+              convertToPx: true
+            }
+          },
+          "collapseGroups",
+          {
+            name: "convertColors",
+            params: {
+              currentColor: false,
+              names2hex: true,
+              rgb2hex: true,
+              convertCase: "lower",
+              shorthex: true,
+              shortname: true
+            }
+          },
+          "convertEllipseToCircle",
+          "convertOneStopGradients",
+          "convertPathData",
+          "convertShapeToPath",
+          "convertStyleToAttrs",
+          "convertTransform",
+          "mergePaths",
+          "mergeStyles",
+          "minifyStyles",
+          "removeComments",
+          "removeDeprecatedAttrs",
+          "removeDesc",
+          "removeDimensions",
+          "removeDoctype",
+          "removeEditorsNSData",
+          "removeEmptyAttrs",
+          "removeEmptyContainers",
+          "removeEmptyText",
+          "removeHiddenElems",
+          "removeMetadata",
+          "removeOffCanvasPaths",
+          "removeTitle",
+          "removeUnknownsAndDefaults",
+          "removeUnusedNS",
+          "removeUselessDefs",
+          "removeUselessStrokeAndFill",
+          "removeXlink",
+          "reusePaths"
         ]
       });
 
@@ -156,7 +201,7 @@ async function run() {
   // 4. Summarize and Output
   const savedSize = stats.originalSize - stats.newSize;
   const savedPercent = stats.originalSize > 0 ? ((savedSize / stats.originalSize) * 100).toFixed(2) : 0;
-  
+
   const summaryText = `### 🚀 Image Compression Summary
 - **Total Processed:** ${stats.processed} files
   - 🖼️ Bitmaps (to AVIF): ${stats.types.bitmap}
@@ -172,7 +217,7 @@ async function run() {
     // Append to GITHUB_OUTPUT using multiline support if needed, but summary is short enough
     fsSync.appendFileSync(process.env.GITHUB_OUTPUT, `summary=${summaryText.replace(/\n/g, '%0A')}\n`);
   }
-  
+
   if (process.env.GITHUB_ENV) {
     // For environment variable, we might want a slightly different format or multiline
     // We use the multiline syntax for GITHUB_ENV
