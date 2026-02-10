@@ -50,7 +50,7 @@ async function run() {
       }
 
       await pipeline
-        .avif({ quality: 60, effort: 9 })
+        .avif({ quality: 60, effort: 7 })
         .toFile(newFile);
 
       const newStat = await fs.stat(newFile);
@@ -81,7 +81,7 @@ async function run() {
       const originalStat = await fs.stat(file);
       stats.originalSize += originalStat.size;
 
-      if (originalStat.size > 20 * 1024) {
+      if (originalStat.size > 30 * 1024) {
         // Convert large SVG to AVIF
         console.log(`Converting large SVG to AVIF: ${file} (${(originalStat.size / 1024).toFixed(2)} KB)`);
         const newFile = file.replace(/\.svg$/i, '.avif');
@@ -98,7 +98,7 @@ async function run() {
 
         await image
           .resize({ width: Math.round(targetWidth) })
-          .avif({ quality: 60, effort: 9 })
+          .avif({ quality: 60, effort: 7 })
           .toFile(newFile);
 
         const newStat = await fs.stat(newFile);
@@ -210,7 +210,7 @@ async function run() {
 
   // Set Output and Env for GitHub Actions
   const delimiter = `EOF_${Math.random().toString(36).substring(7)}`;
-  
+
   if (process.env.GITHUB_OUTPUT) {
     const outputContent = `summary<<${delimiter}\n${summaryText}\n${delimiter}\n`;
     fsSync.appendFileSync(process.env.GITHUB_OUTPUT, outputContent);
