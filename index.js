@@ -81,53 +81,151 @@ async function run() {
       const originalStat = await fs.stat(file);
       stats.originalSize += originalStat.size;
 
-      if (originalStat.size > 30 * 1024) {
-        // Convert large SVG to AVIF
-        console.log(`Converting large SVG to AVIF: ${file} (${(originalStat.size / 1024).toFixed(2)} KB)`);
-        const newFile = file.replace(/\.svg$/i, '.avif');
+      const originalSize = originalStat.size;
+      let shouldConvertToAvif = false;
+      let forceAvif = false;
+      let avifCreated = false;
+
+      // Rule 1: Always convert if >= 100KB
+      if (originalSize >= 100 * 1024) {
+        forceAvif = true;
+        shouldConvertToAvif = true;
+      }
+      // Rule 2: Convert if >= 40KB and contains inline bitmaps/fonts
+      else if (originalSize >= 40 * 1024) {
+        const content = await fs.readFile(file, 'utf8');
+        const hasInlineAssets = /data:image\/|@font-face|<font/i.test(content);
+        if (hasInlineAssets) {
+          forceAvif = true;
+          shouldConvertToAvif = true;
+        }
+      }
+
+      const newFile = file.replace(/\.svg$/i, '.avif');
+
+      // Rule 3: Dynamic conversion for others >= 10KB
+      if (!forceAvif && originalSize >= 10 * 1024) {
+        console.log(`  Attempting trial SVG->AVIF conversion for ratio check: ${file}`);
         const image = sharp(file);
         const metadata = await image.metadata();
-
-        // Calculate target width: 2x original width (from metadata or viewBox)
         let targetWidth = (metadata.width || 1000) * 2;
-        if (targetWidth > 1080) {
-          targetWidth = 1080;
-        }
-
-        console.log(`  Scaling SVG to ${Math.round(targetWidth)}px width`);
+        if (targetWidth > 1080) targetWidth = 1080;
 
         await image
           .resize({ width: Math.round(targetWidth) })
           .avif({ quality: 65, effort: 7 })
           .toFile(newFile);
 
+        const avifStat = await fs.stat(newFile);
+        const avifSize = avifStat.size;
+        let ratioMet = false;
+
+        if (originalSize >= 40 * 1024) {
+          if (avifSize < originalSize * 0.5) ratioMet = true;
+        } else {
+          if (avifSize < originalSize * 0.2) ratioMet = true;
+        }
+
+        if (ratioMet) {
+          shouldConvertToAvif = true;
+          avifCreated = true;
+          console.log(`  Ratio met (${(avifSize / originalSize).toFixed(2)}x), keeping AVIF.`);
+        } else {
+          await fs.unlink(newFile);
+          console.log(`  Ratio NOT met (${(avifSize / originalSize).toFixed(2)}x), discarding AVIF.`);
+        }
+      }
+
+      if (shouldConvertToAvif) {
+        if (!avifCreated) {
+          // Rule 1 or 2: Perform conversion now
+          console.log(`  Converting SVG to AVIF: ${file} (${(originalSize / 1024).toFixed(2)} KB)`);
+          const image = sharp(file);
+          const metadata = await image.metadata();
+          let targetWidth = (metadata.width || 1000) * 2;
+          if (targetWidth > 1080) targetWidth = 1080;
+
+          await image
+            .resize({ width: Math.round(targetWidth) })
+            .avif({ quality: 65, effort: 7 })
+            .toFile(newFile);
+        }
+
         const newStat = await fs.stat(newFile);
         stats.newSize += newStat.size;
         stats.processed++;
-        stats.types.bitmap++; // Large SVGs are tracked as bitmap now
+        stats.types.bitmap++; // Converted SVGs are tracked as bitmap/avif
 
         await fs.unlink(file);
         convertedMap.set(file, newFile);
-        console.log(`  Converted SVG to AVIF: ${newFile} (${(newStat.size / 1024).toFixed(2)} KB)`);
+        console.log(`  Final AVIF: ${newFile} (${(newStat.size / 1024).toFixed(2)} KB)`);
       } else {
-        // Optimize small SVG with SVGO
-        console.log(`Optimizing small SVG: ${file}`);
+        // Optimize small or non-conforming SVG with SVGO
+        console.log(`  Optimizing SVG with SVGO: ${file}`);
         const svgData = await fs.readFile(file, 'utf8');
         const result = optimize(svgData, {
           path: file,
           multipass: true,
-          js2svg: { indent: 0, pretty: false },
           plugins: [
-            "cleanupAttrs", "cleanupIds",
-            { name: "cleanupNumericValues", params: { floatPrecision: 2, leadingZero: false, defaultPx: true, convertToPx: true } },
-            { name: "cleanupListOfValues", params: { floatPrecision: 2, leadingZero: false, defaultPx: true, convertToPx: true } },
+            "cleanupAttrs",
+            "cleanupIds",
+            {
+              name: "cleanupNumericValues",
+              params: {
+                floatPrecision: 2,
+                leadingZero: false,
+                defaultPx: true,
+                convertToPx: true
+              }
+            },
+            {
+              name: "cleanupListOfValues",
+              params: {
+                floatPrecision: 2,
+                leadingZero: false,
+                defaultPx: true,
+                convertToPx: true
+              }
+            },
             "collapseGroups",
-            { name: "convertColors", params: { currentColor: false, names2hex: true, rgb2hex: true, convertCase: "lower", shorthex: true, shortname: true } },
-            "convertEllipseToCircle", "convertOneStopGradients", "convertPathData", "convertShapeToPath", "convertStyleToAttrs", "convertTransform",
-            "mergePaths", "mergeStyles", "minifyStyles", "removeComments", "removeDeprecatedAttrs", "removeDesc", "removeDimensions", "removeDoctype",
-            "removeEditorsNSData", "removeEmptyAttrs", "removeEmptyContainers", "removeEmptyText", "removeHiddenElems", "removeMetadata",
-            "removeOffCanvasPaths", "removeTitle", "removeUnknownsAndDefaults", "removeUnusedNS", "removeUselessDefs", "removeUselessStrokeAndFill",
-            "removeXlink", "reusePaths"
+            {
+              name: "convertColors",
+              params: {
+                currentColor: false,
+                names2hex: true,
+                rgb2hex: true,
+                convertCase: "lower",
+                shorthex: true,
+                shortname: true
+              }
+            },
+            "convertEllipseToCircle",
+            "convertOneStopGradients",
+            "convertPathData",
+            "convertShapeToPath",
+            "convertStyleToAttrs",
+            "convertTransform",
+            "mergePaths",
+            "mergeStyles",
+            "minifyStyles",
+            "removeComments",
+            "removeDeprecatedAttrs",
+            "removeDesc",
+            "removeDoctype",
+            "removeEditorsNSData",
+            "removeEmptyAttrs",
+            "removeEmptyContainers",
+            "removeEmptyText",
+            "removeHiddenElems",
+            "removeMetadata",
+            "removeOffCanvasPaths",
+            "removeTitle",
+            "removeUnknownsAndDefaults",
+            "removeUnusedNS",
+            "removeUselessDefs",
+            "removeUselessStrokeAndFill",
+            "removeXlink",
+            "reusePaths"
           ]
         });
 
