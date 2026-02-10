@@ -141,7 +141,6 @@ async function run() {
           "removeComments",
           "removeDeprecatedAttrs",
           "removeDesc",
-          "removeDimensions",
           "removeDoctype",
           "removeEditorsNSData",
           "removeEmptyAttrs",
