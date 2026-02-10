@@ -181,12 +181,26 @@ async function run() {
   });
 
   console.log(`Updating links in ${mdFiles.length} Markdown files.`);
-  const imageExtRegex = /\.(png|jpg|jpeg|webp|gif)(?=[)\s"']|$)/gi;
+
+  // Regex to find Markdown images and HTML img tags, capturing the path
+  // [!alt](path.ext) or <img src="path.ext" ...>
+  const markdownImgRegex = /(!\[.*?\]\((?!https?:\/\/)(.*?\.(?:png|jpg|jpeg|webp|gif))\))|(<img\b[^>]*?\bsrc=["'](?!https?:\/\/)(.*?\.(?:png|jpg|jpeg|webp|gif))["'][^>]*?>)/gi;
 
   for (const mdFile of mdFiles) {
     try {
       const content = await fs.readFile(mdFile, 'utf8');
-      const updatedContent = content.replace(imageExtRegex, '.avif');
+      const updatedContent = content.replace(markdownImgRegex, (match, mdFull, mdPath, htmlFull, htmlPath) => {
+        if (mdPath) {
+          // It's a Markdown image link
+          const newPath = mdPath.replace(/\.(png|jpg|jpeg|webp|gif)$/i, '.avif');
+          return mdFull.replace(mdPath, newPath);
+        } else if (htmlPath) {
+          // It's an HTML img tag
+          const newPath = htmlPath.replace(/\.(png|jpg|jpeg|webp|gif)$/i, '.avif');
+          return htmlFull.replace(htmlPath, newPath);
+        }
+        return match;
+      });
 
       if (content !== updatedContent) {
         await fs.writeFile(mdFile, updatedContent, 'utf8');
