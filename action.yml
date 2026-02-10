@@ -1,11 +1,14 @@
 name: 'Action Image Resize'
-description: 'Compress PNG, JPG, JPEG, and WebP images to AVIF, resize to max 2560px width and updates Markdown references'
+description: 'Compress bitmaps images to AVIF, resize to max 2560px width, compress svgs via SVGO and updates Markdown references'
 author: 'RainPPR'
 inputs:
   path:
     description: 'The directory to process (relative to the repository root). Defaults to the entire repository.'
     required: false
     default: '.'
+outputs:
+  summary:
+    description: 'A markdown summary of the compression results.'
 runs:
   using: 'docker'
   image: 'Dockerfile'

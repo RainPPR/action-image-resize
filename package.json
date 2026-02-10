@@ -1,7 +1,7 @@
 {
   "name": "action-image-resize",
   "version": "1.0.0",
-  "description": "Compress PNG, JPG, JPEG, and WebP images to AVIF, resize to max 2560px width and updates Markdown references",
+  "description": "Compress bitmaps images to AVIF, resize to max 2560px width, compress svgs via SVGO and updates Markdown references",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
@@ -17,6 +17,7 @@
   "license": "MIT",
   "dependencies": {
     "glob": "^13.0.1",
-    "sharp": "^0.34.5"
+    "sharp": "^0.34.5",
+    "svgo": "^4.0.0"
   }
 }
