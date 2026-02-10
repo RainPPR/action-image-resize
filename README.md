@@ -1,35 +1,57 @@
-# Deep Image Compression to AVIF
+# Action Image Resize 🚀
 
 [![GitHub Action](https://img.shields.io/badge/GitHub%20Action-Image--Resize-blue?logo=github)](https://github.com/RainPPR/action-image-resize)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-这是一个专为 Markdown 文档仓库设计的 GitHub Action，旨在通过深度压缩将图片转换为现代的 **AVIF** 格式。它不仅能显著减少图片体积，还能自动更新 Markdown 文件中的图片引用，非常适合追求极致加载速度的个人博客或静态文档项目。
+这是一个为 **Markdown 文档仓库** 量身定做的深度图片压缩与自动化管理方案。通过 GitHub Action，本工具能自动将位图转换为现代的 **AVIF** 格式，并对 SVG 进行极限优化，同时自动同步修复所有 Markdown 引用路径。
 
-## ✨ 特性
+---
 
-- **全自动化转换**：自动扫描指定目录（默认为全仓库）中的 `png`, `jpg`, `jpeg`, `webp` 图片，并支持 `svg` 的极限压缩。
-- **极致压缩**：位图使用 [Sharp](https://sharp.pixelplumbing.com/) 转换为 `avif`（质量 `60`）；矢量图使用 [SVGO](https://github.com/svg/svgo) 进行多轮重复扫描及浮点精度（`1.0`）极限压缩。
-- **智能缩放**：如果图片宽度超过 `2560px`，将自动等比缩放至 `2560px` 宽度。
-- **引用同步**：自动查找并替换 `.md` 文件中的图片扩展名，保持文档链接有效。
-- **运行报告**：自动生成压缩总结信息，可用于 PR 评论或 Job Summary。
-- **Docker 驱动**：基于 Docker 运行，无需在 Runner 环境中安装额外的 Node.js 或原生库。
+## 🎯 应用场景与局限性
+
+在决定使用本项目前，请务必阅读以下说明：
+
+### **推荐场景**
+
+- **个人博客/技术文档**：追求加载速度的极致优化。
+- **静态资源托管**：希望在保证视觉效果的前提下最大化节省存储和 CDN 流量。
+
+### **不推荐场景**
+
+- ❌ **摄影或高保真作品集**：本项目默认采用 `avif` 质量 `60` 且会强制对超大图进行缩放，不适合对图像细节有严苛要求的场景。
+- ❌ **兼容性要求极高**：AVIF 在极旧设备或浏览器上可能无法渲染（建议环境：Chrome 120+）。
+- ❌ **高频率重复运行**：**警告**：本工具会对 SVG 进行多次扫描重复压缩。频繁对同一批存量图片运行会浪费计算资源，且可能导致 SVG 精度在多次重采样中受损。请合理配置触发路径。
+
+---
+
+## ✨ 核心特性
+
+- **位图全自动转码**：自动扫描 `png`, `jpg`, `jpeg`, `webp`, `gif` 并转换为 `avif` 格式。
+- **矢量图极限优化**：基于 [SVGO](https://github.com/svg/svgo) 进行多轮重复扫描，针对现代显示屏优化浮点精度（`2.0`），极致精简代码。
+- **智能缩放策略**：图片宽度上限限制在 `2560px`，超宽图片将自动等比缩小。
+- **引用同步修复**：自动更新 `.md` 文件中的图片后缀，避免手动修改链接的烦恼。
+- **透明化报告**：运行结束后生成详细的压缩数据报告（支持 Job Summary 和环境变量）。
+- **开箱即用**：基于 Docker (`node:slim`)，无需污染宿主环境。
+
+---
 
 ## 🚀 快速上手
 
-在你的 GitHub 仓库中创建 `.github/workflows/image-compress.yml` 文件：
+在你的 GitHub 仓库中创建 `.github/workflows/image-compress.yml`：
 
 ```yaml
 name: Image Compression
 
 on:
   push:
-    branches:
-      - main
+    branches: [ main ]
     paths:
       - '**.png'
       - '**.jpg'
       - '**.jpeg'
       - '**.webp'
+      - '**.gif'
+      - '**.svg'
   workflow_dispatch:
 
 jobs:
@@ -41,67 +63,82 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Compress Images to AVIF
-        id: compress_step  # 设置 ID 以便获取输出
+      - name: Compress Assets
+        id: compress_step
         uses: RainPPR/action-image-resize@main
         with:
+          # 可选：指定处理目录，例如 'docs'。默认处理全仓库。
           path: '.'
 
-      - name: Update PR Body
+      - name: Add PR Summary
         if: github.event_name == 'pull_request'
         uses: mshick/add-pr-comment@v2
         with:
           message: |
             ${{ steps.compress_step.outputs.summary }}
-          # 或者如果你想使用环境变量：
-          # message: ${{ env.IMAGE_COMPRESSION_SUMMARY }}
 
       - name: Commit & Push changes
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: "chore: compress images and update links"
+          commit_message: "chore: optimize images and update markdown links"
 ```
 
-## 📊 压缩总结报告
+---
 
-本 Action 会生成一份 Markdown 格式的详细报告。你可以按照以下两种方式使用它：
+## � 输入与输出
 
-### 1. 作为 Step Output
+### **Inputs**
 
-通过设置步骤 `id`，使用 `${{ steps.<id>.outputs.summary }}` 获取。
+| 参数 | 说明 | 默认值 |
+| :--- | :--- | :--- |
+| `path` | 指定要处理的子目录（相对于根目录） | `.` |
 
-### 2. 作为 环境变量
+### **Outputs**
 
-Action 会自动设置名为 `IMAGE_COMPRESSION_SUMMARY` 的环境变量。你可以直接在脚本或后续步骤中使用 `${{ env.IMAGE_COMPRESSION_SUMMARY }}`。
+| 参数 | 说明 |
+| :--- | :--- |
+| `summary` | 包含 Markdown 格式的压缩总结报告 |
 
-**在 PR Body 中使用的示例：**
-如果你想在 PR 开启时自动将报告内容评论到 PR 中，可以参考上面的示例 Workflow。
+### **Environment Variables**
 
-## 🛠️ 技术细节
+本 Action 会自动注入环境变量 `IMAGE_COMPRESSION_SUMMARY`，内容同 `summary` 输出，方便在后续步骤中直接引用。
 
-### 处理逻辑
+---
 
-1. **遍历文件**：递归查找所有非 `avif` 和 `svg` 的位图文件。
-2. **Sharp 转换**：
-   - 检查宽度，若 > 2560 则进行 `resize`。
-   - 转换为 `avif` 格式，质量参数定为 `60`。
-3. **清理工作**：转换完成后删除原始的位图文件。
-4. **文档更新**：使用正则表达式匹配并更新项目内所有 `.md` 文件中的图片链接。
+## 🛠️ 技术原理
 
-### 为什么选择 AVIF？
+1. **扫描阶段**：递归检索指定目录下的位图与 SVG 文件。
+2. **Sharp 转码**：
+   - 检查宽度，若 > 2560 则进行 `resize` 处理。
+   - 转换为 `avif` 格式（质量 60），删除原图。
+3. **SVGO 优化**：
+   - 执行 `multipass` 多轮优化。
+   - 清理所有非核心元数据及冗余样式。
+4. **路径同步**：使用正则表达式 `/\.(png|jpg|jpeg|webp|gif)(?=[)\s"']|$)/gi` 精准匹配 Markdown 中的路径并更新为 `.avif`。
 
-AVIF 是目前最先进的图像格式之一，相比 WebP 或 JPEG，它在同等画质下拥有更小的文件体积。虽然它对非常古老的浏览器支持不足，但对于现代 Web 应用和文档站来说是极佳的选择。
+---
 
 ## ⚠️ 注意事项
 
-- 本工具会**直接修改**工作区文件（转换为 avif 并删除原图），请务必配合 `git-auto-commit-action` 或手动 commit 逻辑使用。
-- 建议仅在非二进制、纯 Markdown 文档仓库中使用，或者确保你有良好的 Git 备份。
+- **原地修改**：本工具会直接修改/删除工作区文件。**请务必配合 Git 提交逻辑使用**。
+- **SVG 损耗**：极限压缩后的 SVG 浮点数精度为 1~2 位，在常规显示器下无感，但请勿用于高精度矢量编辑源文件。
 
-## 📄 开源协议
+---
 
-本项目基于 [MIT License](LICENSE) 开源。
+## 🤝 贡献与反馈
+
+本项目由开发者 `RainPPR` 独立维护。
+
+- **现状说明**：由于个人精力和项目定位原因，本项目旨在解决特定需求。**暂不接受**大规模的功能增强请求（Feature Request）。
+- **欢迎反馈**：如果您在使用中发现了 Bug、打字稿错误或是更好的优化思路，非常欢迎提交 Issue 或 Pull Request，我将不胜荣幸。
+
+---
+
+## 📄 许可证
+
+基于 [MIT License](LICENSE) 许可协议。
 
 ---
 
 > [!NOTE]
-> 本项目由 **人工智能 (Antigravity/Gemini 2.0 Flash)** 生成，并经过人工（RainPPR）通过验收和微调。由于开发者精力有限，本项目暂不接受大规模的功能性添加建议，但非常欢迎任何形式的 Bug 修复或文档改进建议。
+> 本文件由 **人工智能 (Antigravity/Gemini 3 Flash)** 生成，并由 **RainPPR** 进行了人工验收与微调。

@@ -20,7 +20,7 @@ async function run() {
   };
 
   // 1. Process Bitmaps (PNG, JPG, JPEG, WEBP) -> AVIF
-  const imageFiles = await glob('**/*.{png,jpg,jpeg,webp}', {
+  const imageFiles = await glob('**/*.{png,jpg,jpeg,webp,gif}', {
     cwd: searchRoot,
     ignore: ['node_modules/**', '.git/**'],
     nodir: true,
@@ -181,7 +181,7 @@ async function run() {
   });
 
   console.log(`Updating links in ${mdFiles.length} Markdown files.`);
-  const imageExtRegex = /\.(png|jpg|jpeg|webp)(?=[)\s"']|$)/gi;
+  const imageExtRegex = /\.(png|jpg|jpeg|webp|gif)(?=[)\s"']|$)/gi;
 
   for (const mdFile of mdFiles) {
     try {
@@ -207,7 +207,7 @@ async function run() {
 
   - 🖼️ Bitmaps (to AVIF): ${stats.types.bitmap}
 
-  - ⚡ SVGs (Optimized): ${stats.types.svg}
+  - ⚡ SVGs (SVGO Optimized): ${stats.types.svg}
 
 - **Storage Saved:** ${(savedSize / 1024 / 1024).toFixed(2)} MB (${savedPercent}%)
 
