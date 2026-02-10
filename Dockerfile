@@ -1,9 +1,10 @@
 FROM node:slim
 
 # Install system dependencies for sharp
-RUN apt-get update && apt-get install -y \
-    libvips-dev \
-    && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    libvips-dev && \
+    rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 

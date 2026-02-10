@@ -5,12 +5,26 @@ const { glob } = require('glob');
 const sharp = require('sharp');
 const { optimize } = require('svgo');
 
+const logger = {
+  info: (msg) => console.log(`[INFO] ${msg}`),
+  step: (msg) => console.log(`\n🚀 ${msg}`),
+  item: (msg) => console.log(`  - ${msg}`),
+  sub: (msg) => console.log(`    └─ ${msg}`),
+  success: (msg) => console.log(`  ✅ ${msg}`),
+  warn: (msg) => console.log(`  ⚠️  ${msg}`),
+  error: (msg, err) => console.error(`  ❌ ${msg}${err ? `: ${err.message}` : ''}`),
+};
+
+const formatSize = (bytes) => (bytes / 1024).toFixed(2) + ' KB';
+const formatMB = (bytes) => (bytes / 1024 / 1024).toFixed(2) + ' MB';
+
 async function run() {
   const workspace = process.env.GITHUB_WORKSPACE || process.cwd();
   const targetSubDir = process.env.INPUT_PATH || '.';
   const searchRoot = path.resolve(workspace, targetSubDir);
 
-  console.log(`Starting image compression in: ${searchRoot}`);
+  logger.info(`Workspace: ${workspace}`);
+  logger.info(`Target path: ${searchRoot}`);
 
   const stats = {
     processed: 0,
@@ -29,9 +43,10 @@ async function run() {
     absolute: true
   });
 
-  console.log(`Found ${imageFiles.length} bitmap images to process.`);
+  logger.step(`Processing ${imageFiles.length} bitmap images...`);
 
   for (const file of imageFiles) {
+    const relativePath = path.relative(searchRoot, file);
     const ext = path.extname(file).toLowerCase();
     const newFile = file.replace(new RegExp(`${ext}$`, 'i'), '.avif');
 
@@ -39,13 +54,13 @@ async function run() {
       const originalStat = await fs.stat(file);
       stats.originalSize += originalStat.size;
 
-      console.log(`Processing bitmap: ${file}`);
+      logger.item(`${relativePath} (${formatSize(originalStat.size)})`);
       const image = sharp(file);
       const metadata = await image.metadata();
 
       let pipeline = image;
       if (metadata.width > 2560) {
-        console.log(`  Resizing from ${metadata.width}px to 2560px`);
+        logger.sub(`Resizing from ${metadata.width}px -> 2560px`);
         pipeline = pipeline.resize(2560);
       }
 
@@ -60,9 +75,9 @@ async function run() {
 
       await fs.unlink(file);
       convertedMap.set(file, newFile);
-      console.log(`  Converted to AVIF: ${newFile} (${(newStat.size / 1024).toFixed(2)} KB)`);
+      logger.success(`Converted to AVIF (${formatSize(newStat.size)})`);
     } catch (err) {
-      console.error(`  Error processing bitmap ${file}: ${err.message}`);
+      logger.error(`Error processing ${relativePath}`, err);
     }
   }
 
@@ -74,38 +89,39 @@ async function run() {
     absolute: true
   });
 
-  console.log(`Found ${svgFiles.length} SVG files to process.`);
+  logger.step(`Processing ${svgFiles.length} SVG files...`);
 
   for (const file of svgFiles) {
+    const relativePath = path.relative(searchRoot, file);
     try {
       const originalStat = await fs.stat(file);
-      stats.originalSize += originalStat.size;
-
       const originalSize = originalStat.size;
+      stats.originalSize += originalSize;
+
+      logger.item(`${relativePath} (${formatSize(originalSize)})`);
+
       let shouldConvertToAvif = false;
       let forceAvif = false;
       let avifCreated = false;
 
-      // Rule 1: Always convert if >= 100KB
       if (originalSize >= 100 * 1024) {
         forceAvif = true;
         shouldConvertToAvif = true;
-      }
-      // Rule 2: Convert if >= 40KB and contains inline bitmaps/fonts
-      else if (originalSize >= 40 * 1024) {
+        logger.sub(`Size >= 100KB, forcing AVIF.`);
+      } else if (originalSize >= 40 * 1024) {
         const content = await fs.readFile(file, 'utf8');
         const hasInlineAssets = /data:image\/|@font-face|<font/i.test(content);
         if (hasInlineAssets) {
           forceAvif = true;
           shouldConvertToAvif = true;
+          logger.sub(`Contains inline assets, forcing AVIF.`);
         }
       }
 
       const newFile = file.replace(/\.svg$/i, '.avif');
 
-      // Rule 3: Dynamic conversion for others >= 10KB
       if (!forceAvif && originalSize >= 10 * 1024) {
-        console.log(`  Attempting trial SVG->AVIF conversion for ratio check: ${file}`);
+        logger.sub(`Attempting trial SVG->AVIF conversion...`);
         const image = sharp(file);
         const metadata = await image.metadata();
         let targetWidth = (metadata.width || 1000) * 2;
@@ -129,17 +145,15 @@ async function run() {
         if (ratioMet) {
           shouldConvertToAvif = true;
           avifCreated = true;
-          console.log(`  Ratio met (${(avifSize / originalSize).toFixed(2)}x), keeping AVIF.`);
+          logger.sub(`Ratio met (${(avifSize / originalSize).toFixed(2)}x), keeping AVIF.`);
         } else {
           await fs.unlink(newFile);
-          console.log(`  Ratio NOT met (${(avifSize / originalSize).toFixed(2)}x), discarding AVIF.`);
+          logger.sub(`Ratio not met (${(avifSize / originalSize).toFixed(2)}x), fallback to SVGO.`);
         }
       }
 
       if (shouldConvertToAvif) {
         if (!avifCreated) {
-          // Rule 1 or 2: Perform conversion now
-          console.log(`  Converting SVG to AVIF: ${file} (${(originalSize / 1024).toFixed(2)} KB)`);
           const image = sharp(file);
           const metadata = await image.metadata();
           let targetWidth = (metadata.width || 1000) * 2;
@@ -154,78 +168,27 @@ async function run() {
         const newStat = await fs.stat(newFile);
         stats.newSize += newStat.size;
         stats.processed++;
-        stats.types.bitmap++; // Converted SVGs are tracked as bitmap/avif
+        stats.types.bitmap++;
 
         await fs.unlink(file);
         convertedMap.set(file, newFile);
-        console.log(`  Final AVIF: ${newFile} (${(newStat.size / 1024).toFixed(2)} KB)`);
+        logger.success(`Converted to AVIF (${formatSize(newStat.size)})`);
       } else {
-        // Optimize small or non-conforming SVG with SVGO
-        console.log(`  Optimizing SVG with SVGO: ${file}`);
         const svgData = await fs.readFile(file, 'utf8');
         const result = optimize(svgData, {
           path: file,
           multipass: true,
           plugins: [
-            "cleanupAttrs",
-            "cleanupIds",
-            {
-              name: "cleanupNumericValues",
-              params: {
-                floatPrecision: 2,
-                leadingZero: false,
-                defaultPx: true,
-                convertToPx: true
-              }
-            },
-            {
-              name: "cleanupListOfValues",
-              params: {
-                floatPrecision: 2,
-                leadingZero: false,
-                defaultPx: true,
-                convertToPx: true
-              }
-            },
+            "cleanupAttrs", "cleanupIds",
+            { name: "cleanupNumericValues", params: { floatPrecision: 2, leadingZero: false, defaultPx: true, convertToPx: true } },
+            { name: "cleanupListOfValues", params: { floatPrecision: 2, leadingZero: false, defaultPx: true, convertToPx: true } },
             "collapseGroups",
-            {
-              name: "convertColors",
-              params: {
-                currentColor: false,
-                names2hex: true,
-                rgb2hex: true,
-                convertCase: "lower",
-                shorthex: true,
-                shortname: true
-              }
-            },
-            "convertEllipseToCircle",
-            "convertOneStopGradients",
-            "convertPathData",
-            "convertShapeToPath",
-            "convertStyleToAttrs",
-            "convertTransform",
-            "mergePaths",
-            "mergeStyles",
-            "minifyStyles",
-            "removeComments",
-            "removeDeprecatedAttrs",
-            "removeDesc",
-            "removeDoctype",
-            "removeEditorsNSData",
-            "removeEmptyAttrs",
-            "removeEmptyContainers",
-            "removeEmptyText",
-            "removeHiddenElems",
-            "removeMetadata",
-            "removeOffCanvasPaths",
-            "removeTitle",
-            "removeUnknownsAndDefaults",
-            "removeUnusedNS",
-            "removeUselessDefs",
-            "removeUselessStrokeAndFill",
-            "removeXlink",
-            "reusePaths"
+            { name: "convertColors", params: { currentColor: false, names2hex: true, rgb2hex: true, convertCase: "lower", shorthex: true, shortname: true } },
+            "convertEllipseToCircle", "convertOneStopGradients", "convertPathData", "convertShapeToPath", "convertStyleToAttrs",
+            "convertTransform", "mergePaths", "mergeStyles", "minifyStyles", "removeComments", "removeDeprecatedAttrs",
+            "removeDesc", "removeDoctype", "removeEditorsNSData", "removeEmptyAttrs", "removeEmptyContainers", "removeEmptyText",
+            "removeHiddenElems", "removeMetadata", "removeOffCanvasPaths", "removeTitle", "removeUnknownsAndDefaults",
+            "removeUnusedNS", "removeUselessDefs", "removeUselessStrokeAndFill", "removeXlink", "reusePaths"
           ]
         });
 
@@ -235,11 +198,11 @@ async function run() {
           stats.newSize += newStat.size;
           stats.processed++;
           stats.types.svg++;
-          console.log(`  Optimized SVG: ${file} (${(newStat.size / 1024).toFixed(2)} KB)`);
+          logger.success(`Optimized with SVGO (${formatSize(newStat.size)})`);
         }
       }
     } catch (err) {
-      console.error(`  Error processing SVG ${file}: ${err.message}`);
+      logger.error(`Error processing SVG ${relativePath}`, err);
     }
   }
 
@@ -251,12 +214,12 @@ async function run() {
     absolute: true
   });
 
-  console.log(`Checking link updates in ${mdFiles.length} Markdown files.`);
+  logger.step(`Checking ${mdFiles.length} Markdown files for link updates...`);
 
-  // Regex to match local image paths in ![]() or <img src="">
   const markdownImgRegex = /(!\[.*?\]\((?!https?:\/\/)(.*?\.(?:png|jpg|jpeg|webp|gif|svg))\))|(<img\b[^>]*?\bsrc=["'](?!https?:\/\/)(.*?\.(?:png|jpg|jpeg|webp|gif|svg))["'][^>]*?>)/gi;
 
   for (const mdFile of mdFiles) {
+    const relativeMdPath = path.relative(searchRoot, mdFile);
     try {
       const content = await fs.readFile(mdFile, 'utf8');
       const mdDir = path.dirname(mdFile);
@@ -265,7 +228,6 @@ async function run() {
         const rawPath = mdPath || htmlPath;
         if (!rawPath) return match;
 
-        // Resolve path to absolute to check if it was converted
         const fullOriginalPath = path.resolve(mdDir, rawPath);
 
         if (convertedMap.has(fullOriginalPath)) {
@@ -278,10 +240,10 @@ async function run() {
 
       if (content !== updatedContent) {
         await fs.writeFile(mdFile, updatedContent, 'utf8');
-        console.log(`Updated link in: ${mdFile}`);
+        logger.success(`Updated links in ${relativeMdPath}`);
       }
     } catch (err) {
-      console.error(`Error processing markdown ${mdFile}: ${err.message}`);
+      logger.error(`Error updating links in ${relativeMdPath}`, err);
     }
   }
 
@@ -297,14 +259,14 @@ async function run() {
 
   - ⚡ SVGs (SVGO Optimized): ${stats.types.svg}
 
-- **Storage Saved:** ${(savedSize / 1024 / 1024).toFixed(2)} MB (${savedPercent}%)
+- **Storage Saved:** ${formatMB(savedSize)} (${savedPercent}%)
 
-- **Original Total Size:** ${(stats.originalSize / 1024 / 1024).toFixed(2)} MB
+- **Original Total Size:** ${formatMB(stats.originalSize)}
 
-- **New Total Size:** ${(stats.newSize / 1024 / 1024).toFixed(2)} MB
+- **New Total Size:** ${formatMB(stats.newSize)}
 `;
 
-  console.log(summaryText);
+  console.log('\n' + summaryText);
 
   // Set Output and Env for GitHub Actions
   const delimiter = `EOF_${Math.random().toString(36).substring(7)}`;
@@ -319,10 +281,10 @@ async function run() {
     fsSync.appendFileSync(process.env.GITHUB_ENV, envContent);
   }
 
-  console.log('Finished processing all files.');
+  logger.step('All tasks completed successfully! 🎉');
 }
 
 run().catch(err => {
-  console.error('Critical Error:', err);
+  console.error('\n❌ Critical Error:', err);
   process.exit(1);
 });
