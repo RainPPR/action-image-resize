@@ -1,9 +1,29 @@
 const fs = require('fs').promises;
 const fsSync = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { glob } = require('glob');
 const sharp = require('sharp');
 const { optimize } = require('svgo');
+
+/**
+ * 计算文件内容的 SHA-256，返回后7位十六进制字符串。
+ */
+async function getFileSha7(filePath) {
+  const buf = await fs.readFile(filePath);
+  const hash = crypto.createHash('sha256').update(buf).digest('hex');
+  return hash.slice(-7);
+}
+
+/**
+ * 根据原始文件路径和 sha7 构造带 sha7 后缀的 .avif 路径。
+ * 例如：/foo/image-1.png + a3f8c2d -> /foo/image-1-a3f8c2d.avif
+ */
+function buildAvifPath(originalFile, sha7) {
+  const ext = path.extname(originalFile);
+  const base = originalFile.slice(0, originalFile.length - ext.length);
+  return `${base}-${sha7}.avif`;
+}
 
 const logger = {
   info: (msg) => console.log(`[INFO] ${msg}`),
@@ -47,8 +67,6 @@ async function run() {
 
   for (const file of imageFiles) {
     const relativePath = path.relative(searchRoot, file);
-    const ext = path.extname(file).toLowerCase();
-    const newFile = file.replace(new RegExp(`${ext}$`, 'i'), '.avif');
 
     try {
       const originalStat = await fs.stat(file);
@@ -66,10 +84,16 @@ async function run() {
         pipeline = pipeline.resize(2560);
       }
 
+      // 先写入临时文件，计算 SHA 后重命名为最终带 sha7 的路径
+      const tmpFile = file + '.avif.tmp';
       await pipeline
         .flatten({ background: '#FFFFFF' })
         .avif({ quality: 65, effort: 7 })
-        .toFile(newFile);
+        .toFile(tmpFile);
+
+      const sha7 = await getFileSha7(tmpFile);
+      const newFile = buildAvifPath(file, sha7);
+      await fs.rename(tmpFile, newFile);
 
       const newStat = await fs.stat(newFile);
       stats.newSize += newStat.size;
@@ -78,7 +102,7 @@ async function run() {
 
       await fs.unlink(file);
       convertedMap.set(file, newFile);
-      logger.done(`AVIF: ${formatSize(newStat.size)}`);
+      logger.done(`AVIF: ${formatSize(newStat.size)} [sha:${sha7}]`);
     } catch (err) {
       process.stdout.write('\n');
       logger.error(`Error processing ${relativePath}`, err);
@@ -126,7 +150,9 @@ async function run() {
         }
       }
 
-      const newFile = file.replace(/\.svg$/i, '.avif');
+      // 使用临时文件路径，后续计算 sha7 后重命名
+      const tmpFile = file + '.avif.tmp';
+      let finalAvifFile = null; // 最终带 sha7 的 avif 路径，稍后确定
 
       if (!forceAvif && originalSize >= 10 * 1024) {
         process.stdout.write('\n');
@@ -138,10 +164,10 @@ async function run() {
 
         await image
           .resize({ width: Math.round(targetWidth) })
-          .avif({ quality: 65, effort: 7 })
-          .toFile(newFile);
+          .avif({ quality: 60, effort: 7 })
+          .toFile(tmpFile);
         
-        const avifStat = await fs.stat(newFile);
+        const avifStat = await fs.stat(tmpFile);
         const avifSize = avifStat.size;
         let ratioMet = false;
 
@@ -156,7 +182,7 @@ async function run() {
           avifCreated = true;
           logger.sub(`Ratio met (${(avifSize / originalSize).toFixed(2)}x), keeping AVIF.`);
         } else {
-          await fs.unlink(newFile);
+          await fs.unlink(tmpFile);
           logger.sub(`Ratio not met (${(avifSize / originalSize).toFixed(2)}x), fallback to SVGO.`);
         }
         process.stdout.write('  - ... ');
@@ -171,18 +197,23 @@ async function run() {
 
           await image
             .resize({ width: Math.round(targetWidth) })
-            .avif({ quality: 65, effort: 7 })
-            .toFile(newFile);
+            .avif({ quality: 60, effort: 7 })
+            .toFile(tmpFile);
         }
 
-        const newStat = await fs.stat(newFile);
+        // 计算 sha7 并重命名为最终文件
+        const sha7 = await getFileSha7(tmpFile);
+        finalAvifFile = buildAvifPath(file, sha7);
+        await fs.rename(tmpFile, finalAvifFile);
+
+        const newStat = await fs.stat(finalAvifFile);
         stats.newSize += newStat.size;
         stats.processed++;
         stats.types.bitmap++;
 
         await fs.unlink(file);
-        convertedMap.set(file, newFile);
-        logger.done(`AVIF: ${formatSize(newStat.size)}`);
+        convertedMap.set(file, finalAvifFile);
+        logger.done(`AVIF: ${formatSize(newStat.size)} [sha:${sha7}]`);
       } else {
         const svgData = await fs.readFile(file, 'utf8');
         const result = optimize(svgData, {
@@ -242,7 +273,9 @@ async function run() {
         const fullOriginalPath = path.resolve(mdDir, rawPath);
 
         if (convertedMap.has(fullOriginalPath)) {
-          const newPath = rawPath.replace(/\.(png|jpg|jpeg|webp|gif|svg)$/i, '.avif');
+          // 从 convertedMap 取得实际的新文件绝对路径（已含 sha7），计算相对路径替换
+          const newAbsPath = convertedMap.get(fullOriginalPath);
+          const newPath = path.relative(mdDir, newAbsPath).replace(/\\/g, '/');
           return (mdPath ? mdFull : htmlFull).replace(rawPath, newPath);
         }
 
