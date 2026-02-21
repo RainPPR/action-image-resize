@@ -108,6 +108,9 @@ jobs:
         uses: RainPPR/action-image-resize@main
         with:
           path: '.'   # 可选，指定处理的子目录，默认处理整个仓库
+          # ignore: | # 可选，排除特定的文件或文件夹，支持通配符
+          #   docs/favicon.png
+          #   docs/xxx/**
 
       - name: Commit & Push
         uses: stefanzweifel/git-auto-commit-action@v5
@@ -134,6 +137,7 @@ jobs:
 | 参数 | 说明 | 是否必填 | 默认值 |
 | :--- | :--- | :---: | :--- |
 | `path` | 要处理的目录（相对于仓库根目录） | 否 | `.` |
+| `ignore` | 要忽略的文件或文件夹（支持通配符），每行一个 | 否 | `''` |
 
 ### Outputs
 

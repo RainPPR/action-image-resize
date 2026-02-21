@@ -6,6 +6,10 @@ inputs:
     description: 'The directory to process (relative to the repository root). Defaults to the entire repository.'
     required: false
     default: '.'
+  ignore:
+    description: 'A list of glob patterns to ignore, separated by newlines.'
+    required: false
+    default: ''
 outputs:
   summary:
     description: 'A markdown summary of the compression results.'

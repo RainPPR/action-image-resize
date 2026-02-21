@@ -43,8 +43,18 @@ async function run() {
   const targetSubDir = process.env.INPUT_PATH || '.';
   const searchRoot = path.resolve(workspace, targetSubDir);
 
+  const ignoreInput = process.env.INPUT_IGNORE || '';
+  const customIgnores = ignoreInput
+    .split(/\r?\n/)
+    .map(s => s.trim())
+    .filter(Boolean);
+  const ignoreList = ['node_modules/**', '.git/**', ...customIgnores];
+
   logger.info(`Workspace: ${workspace}`);
   logger.info(`Target path: ${searchRoot}`);
+  if (customIgnores.length > 0) {
+    logger.info(`Ignored patterns: ${customIgnores.join(', ')}`);
+  }
 
   const stats = {
     processed: 0,
@@ -58,7 +68,7 @@ async function run() {
   // 1. Process Bitmaps (PNG, JPG, JPEG, WEBP, GIF) -> AVIF
   const imageFiles = await glob('**/*.{png,jpg,jpeg,webp,gif}', {
     cwd: searchRoot,
-    ignore: ['node_modules/**', '.git/**'],
+    ignore: ignoreList,
     nodir: true,
     absolute: true
   });
@@ -112,7 +122,7 @@ async function run() {
   // 2. Process SVGs -> SVGO or AVIF
   const svgFiles = await glob('**/*.svg', {
     cwd: searchRoot,
-    ignore: ['node_modules/**', '.git/**'],
+    ignore: ignoreList,
     nodir: true,
     absolute: true
   });
@@ -251,7 +261,7 @@ async function run() {
   // 3. Update Markdown files
   const mdFiles = await glob('**/*.md', {
     cwd: searchRoot,
-    ignore: ['node_modules/**', '.git/**'],
+    ignore: ignoreList,
     nodir: true,
     absolute: true
   });
