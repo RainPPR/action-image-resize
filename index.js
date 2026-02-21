@@ -26,13 +26,18 @@ function buildAvifPath(originalFile, sha7) {
 }
 
 const logger = {
-  info: (msg) => console.log(`[INFO] ${msg}`),
-  step: (msg) => console.log(`\n==> ${msg}`),
-  item: (msg) => process.stdout.write(`  - ${msg} ... `),
-  done: (msg) => process.stdout.write(`DONE${msg ? ` (${msg})` : ''}\n`),
-  sub: (msg) => console.log(`    |-- ${msg}`),
-  warn: (msg) => console.log(`  [WARN] ${msg}`),
-  error: (msg, err) => console.error(`  [ERROR] ${msg}${err ? `: ${err.message}` : ''}`),
+  _ts: () => {
+    const d = new Date();
+    const pad = (n) => n.toString().padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  },
+  info: (msg) => console.log(`[${logger._ts()}] [INFO] ${msg}`),
+  step: (msg) => console.log(`[${logger._ts()}] [STEP] ${msg}`),
+  item: (msg) => console.log(`[${logger._ts()}] [ITEM] ${msg}`),
+  done: (msg) => console.log(`[${logger._ts()}] [DONE] ${msg || 'Completed'}`),
+  sub: (msg) => console.log(`[${logger._ts()}] [SUB]  ${msg}`),
+  warn: (msg) => console.log(`[${logger._ts()}] [WARN] ${msg}`),
+  error: (msg, err) => console.error(`[${logger._ts()}] [ERR]  ${msg}${err ? `: ${err.message}` : ''}`),
 };
 
 const formatSize = (bytes) => (bytes / 1024).toFixed(2) + ' KB';
@@ -88,9 +93,7 @@ async function run() {
 
       let pipeline = image;
       if (metadata.width > 2560) {
-        process.stdout.write('\n');
         logger.sub(`Resizing from ${metadata.width}px -> 2560px`);
-        process.stdout.write('  - ... ');
         pipeline = pipeline.resize(2560);
       }
 
@@ -114,7 +117,6 @@ async function run() {
       convertedMap.set(file, newFile);
       logger.done(`AVIF: ${formatSize(newStat.size)} [sha:${sha7}]`);
     } catch (err) {
-      process.stdout.write('\n');
       logger.error(`Error processing ${relativePath}`, err);
     }
   }
@@ -145,18 +147,14 @@ async function run() {
       if (originalSize >= 100 * 1024) {
         forceAvif = true;
         shouldConvertToAvif = true;
-        process.stdout.write('\n');
         logger.sub(`Size >= 100KB, forcing AVIF.`);
-        process.stdout.write('  - ... ');
       } else if (originalSize >= 40 * 1024) {
         const content = await fs.readFile(file, 'utf8');
         const hasInlineAssets = /data:image\/|@font-face|<font/i.test(content);
         if (hasInlineAssets) {
           forceAvif = true;
           shouldConvertToAvif = true;
-          process.stdout.write('\n');
           logger.sub(`Contains inline assets, forcing AVIF.`);
-          process.stdout.write('  - ... ');
         }
       }
 
@@ -165,7 +163,6 @@ async function run() {
       let finalAvifFile = null; // 最终带 sha7 的 avif 路径，稍后确定
 
       if (!forceAvif && originalSize >= 10 * 1024) {
-        process.stdout.write('\n');
         logger.sub(`Attempting trial SVG->AVIF conversion...`);
         const image = sharp(file);
         const metadata = await image.metadata();
@@ -195,7 +192,6 @@ async function run() {
           await fs.unlink(tmpFile);
           logger.sub(`Ratio not met (${(avifSize / originalSize).toFixed(2)}x), fallback to SVGO.`);
         }
-        process.stdout.write('  - ... ');
       }
 
       if (shouldConvertToAvif) {
@@ -253,7 +249,6 @@ async function run() {
         }
       }
     } catch (err) {
-      process.stdout.write('\n');
       logger.error(`Error processing SVG ${relativePath}`, err);
     }
   }
