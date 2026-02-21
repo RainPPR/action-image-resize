@@ -173,7 +173,7 @@ async function run() {
           .resize({ width: Math.round(targetWidth) })
           .avif({ quality: 60, effort: 9 })
           .toFile(tmpFile);
-        
+
         const avifStat = await fs.stat(tmpFile);
         const avifSize = avifStat.size;
         let ratioMet = false;
@@ -222,20 +222,93 @@ async function run() {
         logger.done(`AVIF: ${formatSize(newStat.size)} [sha:${sha7}]`);
       } else {
         const svgData = await fs.readFile(file, 'utf8');
+
         const result = optimize(svgData, {
           path: file,
-          multipass: true,
+          multipass: true,                    // 多轮优化，收益大且安全
           plugins: [
-            "cleanupAttrs", "cleanupIds",
-            { name: "cleanupNumericValues", params: { floatPrecision: 2, leadingZero: false, defaultPx: true, convertToPx: true } },
-            { name: "cleanupListOfValues", params: { floatPrecision: 2, leadingZero: false, defaultPx: true, convertToPx: true } },
-            "collapseGroups",
-            { name: "convertColors", params: { currentColor: false, names2hex: true, rgb2hex: true, convertCase: "lower", shorthex: true, shortname: true } },
-            "convertEllipseToCircle", "convertOneStopGradients", "convertPathData", "convertShapeToPath", "convertStyleToAttrs",
-            "convertTransform", "mergePaths", "mergeStyles", "minifyStyles", "removeComments", "removeDeprecatedAttrs",
-            "removeDesc", "removeDoctype", "removeEditorsNSData", "removeEmptyAttrs", "removeEmptyContainers", "removeEmptyText",
-            "removeHiddenElems", "removeMetadata", "removeOffCanvasPaths", "removeTitle", "removeUnknownsAndDefaults",
-            "removeUnusedNS", "removeUselessDefs", "removeUselessStrokeAndFill", "removeXlink", "reusePaths"
+            {
+              name: "preset-default",
+              params: {
+                overrides: {
+                  // === 必须关闭的危险插件（导致渲染错误的元凶，已逐个确认）===
+                  removeUselessStrokeAndFill: false,   // 表格细线/网格消失最常见原因
+                  removeHiddenElems: false,            // 误删 opacity/visibility 元素 → 空白
+                  removeOffCanvasPaths: false,         // 边缘线被裁剪
+                  mergePaths: false,                   // 合并后抗锯齿/接头改变 → 线条变细
+                  convertShapeToPath: false,           // 保留 <rect>/<line> 原生渲染更准
+
+                  // === 数值精度（关键修复：原来 floatPrecision:2 太激进）===
+                  cleanupNumericValues: {
+                    floatPrecision: 4,                 // 安全且足够小
+                    leadingZero: false,
+                    defaultPx: true,
+                    convertToPx: true
+                  },
+
+                  convertPathData: {
+                    floatPrecision: 4,
+                    transformPrecision: 6,
+                    applyTransforms: false,            // 不烘焙 transform（防描边偏移）
+                    applyTransformsStroked: false,
+                    removeUseless: false,              // 防止误删路径段
+                    collapseRepeated: true,
+                    lineShorthands: true
+                  },
+
+                  convertTransform: {
+                    floatPrecision: 4,
+                    transformPrecision: 6,
+                    degPrecision: 3
+                  },
+
+                  // ID 处理（配合 prefixIds 更稳）
+                  cleanupIds: {
+                    minify: true                       // 可压缩，prefix 会保证唯一
+                  },
+
+                  // convertColors（保留你原来的设置）
+                  convertColors: {
+                    currentColor: false,
+                    names2hex: true,
+                    rgb2hex: true,
+                    convertCase: "lower",
+                    shorthex: true,
+                    shortname: true
+                  }
+                }
+              }
+            },
+
+            // === 额外安全、高收益插件（不在 preset-default 或需自定义）===
+            {
+              name: "cleanupListOfValues",
+              params: {
+                floatPrecision: 4,
+                leadingZero: false,
+                defaultPx: true,
+                convertToPx: true
+              }
+            },
+
+            "convertOneStopGradients",           // 单色渐变转纯色，安全
+            "convertStyleToAttrs",               // 你原来的，保留（样式转属性）
+
+            // === 防多 SVG 内联 ID 冲突（最重要新增之一）===
+            {
+              name: "prefixIds",
+              params: {
+                prefix: () => `svg_${(file || Date.now().toString()).replace(/[^a-z0-9]/gi, "_").toLowerCase().slice(0, 12)}`,
+                delim: "__",
+                prefixIds: true,
+                prefixClassNames: false            // class 不加前缀（通常不需要）
+              }
+            },
+
+            // === 实用 Web 增强 ===
+            "removeDimensions",                  // 移除固定 width/height → 响应式（强烈推荐）
+            "sortAttrs",                         // 属性排序，提升 gzip/brotli 压缩率
+            "sortDefsChildren"                   // <defs> 内排序，同样提升压缩
           ]
         });
 
