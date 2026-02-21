@@ -101,7 +101,7 @@ async function run() {
       const tmpFile = file + '.avif.tmp';
       await pipeline
         .flatten({ background: '#FFFFFF' })
-        .avif({ quality: 65, effort: 7 })
+        .avif({ quality: 65, effort: 9 })
         .toFile(tmpFile);
 
       const sha7 = await getFileSha7(tmpFile);
@@ -171,7 +171,7 @@ async function run() {
 
         await image
           .resize({ width: Math.round(targetWidth) })
-          .avif({ quality: 60, effort: 7 })
+          .avif({ quality: 60, effort: 9 })
           .toFile(tmpFile);
         
         const avifStat = await fs.stat(tmpFile);
