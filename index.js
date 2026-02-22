@@ -234,7 +234,6 @@ async function run() {
                   // === 必须关闭的危险插件（导致渲染错误的元凶，已逐个确认）===
                   removeUselessStrokeAndFill: false,   // 表格细线/网格消失最常见原因
                   removeHiddenElems: false,            // 误删 opacity/visibility 元素 → 空白
-                  removeOffCanvasPaths: false,         // 边缘线被裁剪
                   mergePaths: false,                   // 合并后抗锯齿/接头改变 → 线条变细
                   convertShapeToPath: false,           // 保留 <rect>/<line> 原生渲染更准
 
