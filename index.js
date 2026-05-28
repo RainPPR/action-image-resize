@@ -55,6 +55,11 @@ async function run() {
     .filter(Boolean);
   const ignoreList = ['node_modules/**', '.git/**', ...customIgnores];
 
+  const skipSvg = process.env.INPUT_SKIP_SVG === 'true';
+  if (skipSvg) {
+    logger.info('SVG compression is disabled (skip_svg: true)');
+  }
+
   logger.info(`Workspace: ${workspace}`);
   logger.info(`Target path: ${searchRoot}`);
   if (customIgnores.length > 0) {
@@ -122,16 +127,17 @@ async function run() {
   }
 
   // 2. Process SVGs -> SVGO or AVIF
-  const svgFiles = await glob('**/*.svg', {
-    cwd: searchRoot,
-    ignore: ignoreList,
-    nodir: true,
-    absolute: true
-  });
+  if (!skipSvg) {
+    const svgFiles = await glob('**/*.svg', {
+      cwd: searchRoot,
+      ignore: ignoreList,
+      nodir: true,
+      absolute: true
+    });
 
-  logger.step(`Processing ${svgFiles.length} SVG files...`);
+    logger.step(`Processing ${svgFiles.length} SVG files...`);
 
-  for (const file of svgFiles) {
+    for (const file of svgFiles) {
     const relativePath = path.relative(searchRoot, file);
     try {
       const originalStat = await fs.stat(file);
@@ -324,6 +330,7 @@ async function run() {
       logger.error(`Error processing SVG ${relativePath}`, err);
     }
   }
+  } // End of SVG processing block (when skip_svg is false)
 
   // 3. Update Markdown files
   const mdFiles = await glob('**/*.md', {

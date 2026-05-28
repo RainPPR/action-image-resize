@@ -10,6 +10,10 @@ inputs:
     description: 'A list of glob patterns to ignore, separated by newlines.'
     required: false
     default: ''
+  skip_svg:
+    description: 'If set to true, skip all SVG compression operations.'
+    required: false
+    default: 'false'
 outputs:
   summary:
     description: 'A markdown summary of the compression results.'
