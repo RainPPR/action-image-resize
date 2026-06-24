@@ -126,7 +126,7 @@ async function run() {
     }
   }
 
-  // 2. Process SVGs -> SVGO or AVIF
+  // 2. Process SVGs via SVGO
   if (!skipSvg) {
     const svgFiles = await glob('**/*.svg', {
       cwd: searchRoot,
@@ -138,127 +138,39 @@ async function run() {
     logger.step(`Processing ${svgFiles.length} SVG files...`);
 
     for (const file of svgFiles) {
-    const relativePath = path.relative(searchRoot, file);
-    try {
-      const originalStat = await fs.stat(file);
-      const originalSize = originalStat.size;
-      stats.originalSize += originalSize;
+      const relativePath = path.relative(searchRoot, file);
+      try {
+        const originalStat = await fs.stat(file);
+        stats.originalSize += originalStat.size;
 
-      logger.item(`${relativePath} (${formatSize(originalSize)})`);
+        logger.item(`${relativePath} (${formatSize(originalStat.size)})`);
 
-      let shouldConvertToAvif = false;
-      let forceAvif = false;
-      let avifCreated = false;
-
-      if (originalSize >= 100 * 1024) {
-        forceAvif = true;
-        shouldConvertToAvif = true;
-        logger.sub(`Size >= 100KB, forcing AVIF.`);
-      } else if (originalSize >= 40 * 1024) {
-        const content = await fs.readFile(file, 'utf8');
-        const hasInlineAssets = /data:image\/|@font-face|<font/i.test(content);
-        if (hasInlineAssets) {
-          forceAvif = true;
-          shouldConvertToAvif = true;
-          logger.sub(`Contains inline assets, forcing AVIF.`);
-        }
-      }
-
-      // 使用临时文件路径，后续计算 sha7 后重命名
-      const tmpFile = file + '.avif.tmp';
-      let finalAvifFile = null; // 最终带 sha7 的 avif 路径，稍后确定
-
-      if (!forceAvif && originalSize >= 10 * 1024) {
-        logger.sub(`Attempting trial SVG->AVIF conversion...`);
-        const image = sharp(file);
-        const metadata = await image.metadata();
-        let targetWidth = (metadata.width || 1000) * 2;
-        if (targetWidth > 1080) targetWidth = 1080;
-
-        await image
-          .resize({ width: Math.round(targetWidth) })
-          .avif({ quality: 60, effort: 9 })
-          .toFile(tmpFile);
-
-        const avifStat = await fs.stat(tmpFile);
-        const avifSize = avifStat.size;
-        let ratioMet = false;
-
-        if (originalSize >= 40 * 1024) {
-          if (avifSize < originalSize * 0.5) ratioMet = true;
-        } else {
-          if (avifSize < originalSize * 0.2) ratioMet = true;
-        }
-
-        if (ratioMet) {
-          shouldConvertToAvif = true;
-          avifCreated = true;
-          logger.sub(`Ratio met (${(avifSize / originalSize).toFixed(2)}x), keeping AVIF.`);
-        } else {
-          await fs.unlink(tmpFile);
-          logger.sub(`Ratio not met (${(avifSize / originalSize).toFixed(2)}x), fallback to SVGO.`);
-        }
-      }
-
-      if (shouldConvertToAvif) {
-        if (!avifCreated) {
-          const image = sharp(file);
-          const metadata = await image.metadata();
-          let targetWidth = (metadata.width || 1000) * 2;
-          if (targetWidth > 1080) targetWidth = 1080;
-
-          await image
-            .resize({ width: Math.round(targetWidth) })
-            .avif({ quality: 60, effort: 7 })
-            .toFile(tmpFile);
-        }
-
-        // 计算 sha7 并重命名为最终文件
-        const sha7 = await getFileSha7(tmpFile);
-        finalAvifFile = buildAvifPath(file, sha7);
-        await fs.rename(tmpFile, finalAvifFile);
-
-        const newStat = await fs.stat(finalAvifFile);
-        stats.newSize += newStat.size;
-        stats.processed++;
-        stats.types.bitmap++;
-
-        await fs.unlink(file);
-        convertedMap.set(file, finalAvifFile);
-        logger.done(`AVIF: ${formatSize(newStat.size)} [sha:${sha7}]`);
-      } else {
         const svgData = await fs.readFile(file, 'utf8');
 
         const result = optimize(svgData, {
           path: file,
-          multipass: true,                    // 多轮优化，收益大且安全
+          multipass: true,
           plugins: [
             {
               name: "preset-default",
               params: {
                 overrides: {
-                  // === 必须关闭的危险插件（导致渲染错误的元凶，已逐个确认）===
-                  removeUselessStrokeAndFill: false,   // 表格细线/网格消失最常见原因
-                  removeHiddenElems: false,            // 误删 opacity/visibility 元素 → 空白
-                  mergePaths: false,                   // 合并后抗锯齿/接头改变 → 线条变细
-                  convertShapeToPath: false,           // 保留 <rect>/<line> 原生渲染更准
+                  removeUselessStrokeAndFill: false,
+                  removeHiddenElems: false,
+                  mergePaths: false,
+                  convertShapeToPath: false,
                   removeXMLNS: false,
-
-                  // === 数值精度（关键修复：原来 floatPrecision:2 太激进）===
                   cleanupNumericValues: {
-                    floatPrecision: 4,                 // 安全且足够小
+                    floatPrecision: 4,
                     leadingZero: false,
                     defaultPx: true,
                     convertToPx: true
                   },
-
                   convertTransform: {
                     floatPrecision: 4,
                     transformPrecision: 6,
                     degPrecision: 3
                   },
-
-                  // convertColors（保留你原来的设置）
                   convertColors: {
                     currentColor: false,
                     names2hex: true,
@@ -270,8 +182,6 @@ async function run() {
                 }
               }
             },
-
-            // 强制给 <svg> 标签添加 xmlns 属性
             {
               name: 'addAttributesToSVGElement',
               params: {
@@ -280,8 +190,6 @@ async function run() {
                 ]
               }
             },
-
-            // === 额外安全、高收益插件（不在 preset-default 或需自定义）===
             {
               name: "cleanupListOfValues",
               params: {
@@ -291,25 +199,11 @@ async function run() {
                 convertToPx: true
               }
             },
-
-            "convertOneStopGradients",           // 单色渐变转纯色，安全
-            "convertStyleToAttrs",               // 你原来的，保留（样式转属性）
-
-            // === 防多 SVG 内联 ID 冲突（最重要新增之一）===
-            {
-              name: "prefixIds",
-              params: {
-                prefix: () => `svg_${(file || Date.now().toString()).replace(/[^a-z0-9]/gi, "_").toLowerCase().slice(0, 12)}`,
-                delim: "__",
-                prefixIds: true,
-                prefixClassNames: false            // class 不加前缀（通常不需要）
-              }
-            },
-
-            // === 实用 Web 增强 ===
-            "removeDimensions",                  // 移除固定 width/height → 响应式（强烈推荐）
-            "sortAttrs",                         // 属性排序，提升 gzip/brotli 压缩率
-            "sortDefsChildren"                   // <defs> 内排序，同样提升压缩
+            "convertOneStopGradients",
+            "convertStyleToAttrs",
+            "removeDimensions",
+            "sortAttrs",
+            "sortDefsChildren"
           ]
         });
 
@@ -321,12 +215,11 @@ async function run() {
           stats.types.svg++;
           logger.done(`SVGO: ${formatSize(newStat.size)}`);
         }
+      } catch (err) {
+        logger.error(`Error processing SVG ${relativePath}`, err);
       }
-    } catch (err) {
-      logger.error(`Error processing SVG ${relativePath}`, err);
     }
   }
-  } // End of SVG processing block (when skip_svg is false)
 
   // 3. Update Markdown files
   const mdFiles = await glob('**/*.md', {
