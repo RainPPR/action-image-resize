@@ -252,25 +252,10 @@ async function run() {
                     convertToPx: true
                   },
 
-                  convertPathData: {
-                    floatPrecision: 4,
-                    transformPrecision: 6,
-                    applyTransforms: false,            // 不烘焙 transform（防描边偏移）
-                    applyTransformsStroked: false,
-                    removeUseless: false,              // 防止误删路径段
-                    collapseRepeated: true,
-                    lineShorthands: true
-                  },
-
                   convertTransform: {
                     floatPrecision: 4,
                     transformPrecision: 6,
                     degPrecision: 3
-                  },
-
-                  // ID 处理（配合 prefixIds 更稳）
-                  cleanupIds: {
-                    minify: true                       // 可压缩，prefix 会保证唯一
                   },
 
                   // convertColors（保留你原来的设置）
