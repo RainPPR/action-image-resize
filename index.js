@@ -242,6 +242,7 @@ async function run() {
                   removeHiddenElems: false,            // 误删 opacity/visibility 元素 → 空白
                   mergePaths: false,                   // 合并后抗锯齿/接头改变 → 线条变细
                   convertShapeToPath: false,           // 保留 <rect>/<line> 原生渲染更准
+                  removeXMLNS: false,
 
                   // === 数值精度（关键修复：原来 floatPrecision:2 太激进）===
                   cleanupNumericValues: {
@@ -282,6 +283,16 @@ async function run() {
                     shortname: true
                   }
                 }
+              }
+            },
+
+            // 强制给 <svg> 标签添加 xmlns 属性
+            {
+              name: 'addAttributesToSVGElement',
+              params: {
+                attributes: [
+                  { xmlns: 'http://www.w3.org/2000/svg' }
+                ]
               }
             },
 
