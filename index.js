@@ -159,7 +159,6 @@ async function run() {
                   removeHiddenElems: false,
                   mergePaths: false,
                   convertShapeToPath: false,
-                  removeXMLNS: false,
                   cleanupNumericValues: {
                     floatPrecision: 4,
                     leadingZero: false,
